@@ -12,6 +12,7 @@ import pyttsx3
 import winreg
 import shutil
 import difflib
+import speech_recognition as sr
 from vosk import Model, KaldiRecognizer, SetLogLevel
 from PyQt5.QtWidgets import QApplication, QListWidget, QDialog, QVBoxLayout, QCheckBox, QPushButton, QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QTimer
@@ -54,8 +55,8 @@ sorted_dict_items = sorted(sym_spell.words.items(), key=lambda x: x[1], reverse=
 common_words_list = [item[0] for item in sorted_dict_items[:25000]]
 
 custom_map = {}
-is_paused = False
-last_pause_time = 0
+is_urdu = False
+last_lang_toggle_time = 0
 last_exit_time = 0
 last_listen_time = 0
 
@@ -134,7 +135,7 @@ except Exception:
 
 is_listening = False
 
-def listen_loop():
+def offline_english_listen_loop():
     global is_listening
     if vosk_model is None:
         winsound.Beep(400, 500)
@@ -144,18 +145,10 @@ def listen_loop():
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8000)
     stream.start_stream()
     rec = KaldiRecognizer(vosk_model, 16000)
-    winsound.Beep(1000, 200)
     
-    # Check for completely dead/muted mic audio (Privacy block)
-    try:
-        test_data = stream.read(4000, exception_on_overflow=False)
-        volume = sum([abs(x) for x in test_data])
-        if volume == 0:
-            speak_text("Microphone stream is completely silent. Please check Windows Privacy Settings.")
-    except Exception:
-        pass
+    last_active_time = time.time()
 
-    while is_listening:
+    while is_listening and not is_urdu:
         try:
             data = stream.read(4000, exception_on_overflow=False)
             if rec.AcceptWaveform(data):
@@ -164,8 +157,20 @@ def listen_loop():
                 if text:
                     text = text.capitalize()
                     keyboard.write(text + " ")
+                last_active_time = time.time()
+            else:
+                res = json.loads(rec.PartialResult())
+                if res.get("partial", ""):
+                    last_active_time = time.time()
+            
+            if time.time() - last_active_time > 3.5:
+                if is_listening:
+                    is_listening = False
+                    winsound.Beep(500, 200)
+                break
         except Exception:
             pass
+            
     try:
         res = json.loads(rec.FinalResult())
         text = res.get("text", "")
@@ -174,26 +179,86 @@ def listen_loop():
             keyboard.write(text + " ")
     except Exception:
         pass
+        
     stream.stop_stream()
     stream.close()
     p.terminate()
-    winsound.Beep(500, 200)
+
+def online_urdu_listen_loop():
+    global is_listening
+    recognizer = sr.Recognizer()
+    recognizer.pause_threshold = 0.8
+    
+    with sr.Microphone() as source:
+        try:
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+        except Exception:
+            pass
+            
+        while is_listening and is_urdu:
+            try:
+                audio = recognizer.listen(source, timeout=3.5, phrase_time_limit=15)
+                if not is_listening:
+                    break
+                text = recognizer.recognize_google(audio, language="ur-PK")
+                if text:
+                    keyboard.write(text + " ")
+            except sr.WaitTimeoutError:
+                if is_listening:
+                    is_listening = False
+                    winsound.Beep(500, 200)
+                break
+            except Exception:
+                pass
+
+def listen_loop():
+    if is_urdu:
+        online_urdu_listen_loop()
+    else:
+        offline_english_listen_loop()
 
 def toggle_listening():
-    global is_listening, is_paused, last_listen_time
-    if is_paused:
-        return
+    global is_listening, last_listen_time
     if keyboard.is_pressed('down'):
         return
     current_time = time.time()
     if current_time - last_listen_time < 0.5:
         return
     last_listen_time = current_time
+    
     if not is_listening:
         is_listening = True
+        winsound.Beep(1000, 200)
         threading.Thread(target=listen_loop, daemon=True).start()
     else:
         is_listening = False
+        winsound.Beep(500, 200)
+
+def toggle_language():
+    global is_urdu, is_listening, last_lang_toggle_time
+    if keyboard.is_pressed('left'):
+        return
+    current_time = time.time()
+    if current_time - last_lang_toggle_time < 0.5:
+        return
+    last_lang_toggle_time = current_time
+    
+    was_listening = is_listening
+    if is_listening:
+        is_listening = False
+        time.sleep(0.4)
+        
+    is_urdu = not is_urdu
+    
+    if is_urdu:
+        threading.Thread(target=speak_text, args=("Switched to Urdu",), daemon=True).start()
+    else:
+        threading.Thread(target=speak_text, args=("Switched to English",), daemon=True).start()
+        
+    if was_listening:
+        is_listening = True
+        winsound.Beep(1000, 200)
+        threading.Thread(target=listen_loop, daemon=True).start()
 
 class SignalHelper(QObject):
     show_suggestions = pyqtSignal(list, str)
@@ -293,9 +358,6 @@ def get_clipboard_text_safely():
     return raw_word
 
 def on_correction_hotkey():
-    global is_paused
-    if is_paused:
-        return
     time.sleep(0.4)
     keyboard.release('alt')
     old_clipboard = pyperclip.paste()
@@ -316,9 +378,6 @@ def on_correction_hotkey():
     signal_helper.show_suggestions.emit(candidates_list, raw_word)
 
 def on_expand_shortcut():
-    global is_paused
-    if is_paused:
-        return
     load_custom_dict()
     time.sleep(0.4)
     keyboard.release('alt')
@@ -347,22 +406,6 @@ def on_expand_shortcut():
     else:
         winsound.Beep(400, 300)
         pyperclip.copy(old_clipboard)
-
-def toggle_pause():
-    global is_paused, is_listening, last_pause_time
-    if keyboard.is_pressed('left'):
-        return
-    current_time = time.time()
-    if current_time - last_pause_time < 0.5:
-        return
-    last_pause_time = current_time
-    is_paused = not is_paused
-    if is_paused:
-        if is_listening:
-            is_listening = False
-        threading.Thread(target=speak_text, args=("paused",), daemon=True).start()
-    else:
-        threading.Thread(target=speak_text, args=("resumed",), daemon=True).start()
 
 def quit_program():
     global last_exit_time
@@ -414,10 +457,6 @@ class SettingsDialog(QDialog):
         self.resize(400, 200)
         layout = QVBoxLayout()
         
-        self.master_switch = QCheckBox("Enable ProTyping Assistant")
-        self.master_switch.setAccessibleName("Enable ProTyping Assistant")
-        self.master_switch.setChecked(not is_paused)
-        
         self.autostart_switch = QCheckBox("Start with Windows Sign-in")
         self.autostart_switch.setAccessibleName("Start with Windows Sign-in")
         self.autostart_switch.setChecked(check_autostart())
@@ -430,7 +469,6 @@ class SettingsDialog(QDialog):
         self.ok_button.setAccessibleName("OK")
         self.ok_button.clicked.connect(self.apply_settings)
         
-        layout.addWidget(self.master_switch)
         layout.addWidget(self.autostart_switch)
         layout.addWidget(self.how_to_use_button)
         layout.addWidget(self.ok_button)
@@ -443,8 +481,6 @@ class SettingsDialog(QDialog):
             pass
 
     def apply_settings(self):
-        global is_paused
-        is_paused = not self.master_switch.isChecked()
         set_autostart(self.autostart_switch.isChecked())
         self.hide()
 
@@ -503,13 +539,12 @@ if __name__ == "__main__":
         QTimer.singleShot(100, focus_and_select)
         
     def handle_show_settings():
-        settings_dialog.master_switch.setChecked(not is_paused)
         settings_dialog.autostart_switch.setChecked(check_autostart())
         settings_dialog.setWindowState(Qt.WindowActive)
         settings_dialog.show()
         settings_dialog.raise_()
         settings_dialog.activateWindow()
-        settings_dialog.master_switch.setFocus()
+        settings_dialog.autostart_switch.setFocus()
         
     signal_helper.show_suggestions.connect(handle_show_suggestions)
     signal_helper.show_settings.connect(handle_show_settings)
@@ -531,7 +566,7 @@ if __name__ == "__main__":
     keyboard.add_hotkey('alt+f8', on_correction_hotkey)
     keyboard.add_hotkey('alt+f9', toggle_listening)
     keyboard.add_hotkey('alt+f10', on_expand_shortcut)
-    keyboard.add_hotkey('alt+f11', toggle_pause)
+    keyboard.add_hotkey('alt+f11', toggle_language)
     keyboard.add_hotkey('alt+f12', quit_program)
         
     sys.exit(app.exec_())

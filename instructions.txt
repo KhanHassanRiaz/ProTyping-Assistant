@@ -39,10 +39,7 @@ Now that your custom dictionary is ready, type your short code in any editor. Se
 
 The program will instantly replace your short code with the full word.
 
-5. Pause and Resume (Alt + F11)
-Press Alt + F11 whenever you want to pause the program. Press it again to resume.
-
-The program will speak its status so you know exactly what mode it is in.
+5. Alt+F11 Language Switching: Press this shortcut to toggle between English and Urdu voice typing modes. The software will provide a clear audio announcement, such as Switched to Urdu or Switched to English, so you always know which language is active. This feature allows you to type in both languages seamlessly during your session.
 
 6. Exit the Program (Alt + F12)
 Press Alt + F12 to completely close the program. You can start it again from your desktop shortcut or start menu.
@@ -94,10 +91,8 @@ Ab aap ki custom dictionary ready hai. Kisi bhi editor main apna short code type
 
 Phir Alt + F10 press karain jis say yeh program foran aap k short code ko mukammal word say replace kar dega.
 
-5. Pause and Resume (Alt + F11)
-Jab bhi aap program ko rokna chahain, Alt + F11 press kar k pause kar saktay hain. Dobara chalane k liye phir say yahi shortcut press karain.
-
-Program bol kar apna status batayega taakay aap ko pata chal jaye k woh kis mode main hai.
+5. Language Switching (Alt + F11)
+English aur Urdu voice typing k darmiyan switch karne k liye Alt + F11 press karain. Program bol kar apna status batayega jaise Switched to Urdu ya Switched to English, taakay aap ko pata chal jaye k ab typing kis language main hogi.
 
 6. Exit the Program (Alt + F12)
 Program ko mukammal tor par close karnay k liye Alt + F12 press karain. Aap isay desktop shortcut ya start menu say dobara chala saktay hain.
