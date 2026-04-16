@@ -135,6 +135,16 @@ except Exception:
 
 is_listening = False
 
+def paste_via_clipboard(text_to_paste):
+    try:
+        old_clip = pyperclip.paste()
+    except Exception:
+        old_clip = ""
+    pyperclip.copy(text_to_paste)
+    keyboard.send('ctrl+v')
+    time.sleep(0.05)
+    pyperclip.copy(old_clip)
+
 def offline_english_listen_loop():
     global is_listening
     if vosk_model is None:
@@ -156,7 +166,7 @@ def offline_english_listen_loop():
                 text = res.get("text", "")
                 if text:
                     text = text.capitalize()
-                    keyboard.write(text + " ")
+                    paste_via_clipboard(text + " ")
                 last_active_time = time.time()
             else:
                 res = json.loads(rec.PartialResult())
@@ -176,7 +186,7 @@ def offline_english_listen_loop():
         text = res.get("text", "")
         if text:
             text = text.capitalize()
-            keyboard.write(text + " ")
+            paste_via_clipboard(text + " ")
     except Exception:
         pass
         
@@ -202,7 +212,7 @@ def online_urdu_listen_loop():
                     break
                 text = recognizer.recognize_google(audio, language="ur-PK")
                 if text:
-                    keyboard.write(text + " ")
+                    paste_via_clipboard(text + " ")
             except sr.WaitTimeoutError:
                 if is_listening:
                     is_listening = False
@@ -491,31 +501,29 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    server_name = "ProTypingAssistant_SingleInstance_Server"
-    socket = QLocalSocket()
-    socket.connectToServer(server_name)
-    if socket.waitForConnected(500):
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Warning)
-        msg.setWindowTitle("ProTyping Assistant")
-        msg.setText("You can run only 1 version at a same time.")
-        msg.setStandardButtons(QMessageBox.Ok)
-        msg.exec_()
-        sys.exit(0)
-
-    server = QLocalServer()
-    server.removeServer(server_name)
-    server.listen(server_name)
+    pid_file = os.path.join(documents_folder, "app.pid")
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file, "r") as f:
+                old_pid = int(f.read().strip())
+            if old_pid != os.getpid():
+                try:
+                    os.kill(old_pid, 9)
+                except Exception:
+                    os.system(f"taskkill /F /PID {old_pid} > nul 2>&1")
+                time.sleep(0.5)
+        except Exception:
+            pass
+            
+    try:
+        with open(pid_file, "w") as f:
+            f.write(str(os.getpid()))
+    except Exception:
+        pass
 
     signal_helper = SignalHelper()
     dialog = SuggestionDialog()
     settings_dialog = SettingsDialog()
-    
-    def handle_new_connection():
-        client_socket = server.nextPendingConnection()
-        client_socket.disconnectFromServer()
-
-    server.newConnection.connect(handle_new_connection)
     
     def handle_show_suggestions(suggestions, raw_word):
         dialog.list_widget.clear()
@@ -561,12 +569,12 @@ if __name__ == "__main__":
         handle_show_settings()
         
     QTimer.singleShot(500, hide_dummy_window)
-    
-    keyboard.add_hotkey('alt+f7', on_settings_hotkey)
-    keyboard.add_hotkey('alt+f8', on_correction_hotkey)
+
+    keyboard.add_hotkey('alt+f7', lambda: threading.Thread(target=on_settings_hotkey, daemon=True).start())
+    keyboard.add_hotkey('alt+f8', lambda: threading.Thread(target=on_correction_hotkey, daemon=True).start())
     keyboard.add_hotkey('alt+f9', toggle_listening)
-    keyboard.add_hotkey('alt+f10', on_expand_shortcut)
+    keyboard.add_hotkey('alt+f10', lambda: threading.Thread(target=on_expand_shortcut, daemon=True).start())
     keyboard.add_hotkey('alt+f11', toggle_language)
-    keyboard.add_hotkey('alt+f12', quit_program)
-        
+    keyboard.add_hotkey('alt+f12', lambda: threading.Thread(target=quit_program, daemon=True).start())
+
     sys.exit(app.exec_())
