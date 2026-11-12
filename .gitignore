@@ -1,0 +1,28 @@
+# Python bytecode and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts and installers
+build/
+dist/
+Output/
+
+# IDE and OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Project assets that should not be pushed
+model/
+icon.ico
+important commands.txt
+typing_asisstant.iss
+push_release_commands.txt
